@@ -28,81 +28,112 @@ type SmapsInfo struct {
 	Total uint64
 }
 
+// MapsInfo stores information about one mapping.
+type MapsInfo struct {
+	RSS  uint64
+	PSS  uint64
+	Size uint64
+}
+
 func main() {
 	pid := os.Getpid()
 	pidVar := flag.Int("pid", pid, "process pid to compute mem usage for")
 	filter := flag.String("filter", "", "filter mapped files using regular expression")
 	flag.Parse()
 
+	filePath := fmt.Sprintf("/proc/%v/smaps", *pidVar)
+	sf, err := readSmaps(filePath, *filter)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	printSmapsInfo(sf)
+}
+
+func readSmaps(fp string, filter string) (*SmapsInfo, error) {
 	var re *regexp.Regexp
-	if *filter != "" {
+	if filter != "" {
 		var err error
-		re, err = regexp.Compile(*filter)
+		re, err = regexp.Compile(filter)
 		if err != nil {
-			log.Fatalf("error in compiling regular expression [%v] :: %v", *filter, err)
+			return nil, fmt.Errorf("error in compiling regex [%v] :: %w", filter, err)
 		}
 	}
 
-	filePath := fmt.Sprintf("/proc/%v/smaps", *pidVar)
-	data, err := ioutil.ReadFile(filePath)
+	data, err := ioutil.ReadFile(fp)
 	if err != nil {
-		log.Fatalf("error in reading file: %v :: %v", filePath, err)
+		return nil, fmt.Errorf("error in reading file: %v :: %w", fp, err)
 	}
 
-	var info SmapsInfo
+	sf := new(SmapsInfo)
 	scanner := bufio.NewScanner(bytes.NewReader(data))
-	first := true
-	skip := false
 	for scanner.Scan() {
-		var vp *uint64
-		var flag bool
+		line := scanner.Text()
+		tokens := strings.Fields(line)
 
+		switch {
+		case re != nil && len(tokens) == 5:
+		case re != nil && len(tokens) == 6 && !re.Match([]byte(tokens[5])):
+			if err := skipMapping(scanner); err != nil {
+				return nil, err
+			}
+
+		case re != nil && len(tokens) != 6:
+			return nil, fmt.Errorf("unexpected first line [%v]", line)
+
+		default:
+			mf, err := readMapping(scanner)
+			if err != nil {
+				return nil, err
+			}
+			sf.Count++
+			sf.RSS += mf.RSS
+			sf.PSS += mf.PSS
+			sf.Total += mf.Size
+		}
+	}
+
+	return sf, nil
+}
+
+func skipMapping(scanner *bufio.Scanner) error {
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, cVMFlagsPrefix) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("unexpected data in smaps file")
+}
+
+func readMapping(scanner *bufio.Scanner) (*MapsInfo, error) {
+	info := new(MapsInfo)
+
+	var vp *uint64
+	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
-		case first:
-			first = false
-			if re == nil {
-				continue
-			}
-			tokens := strings.Fields(line)
-			if len(tokens) == 5 {
-				skip = true
-				continue
-			}
-			if len(tokens) != 6 {
-				log.Fatalf("unexpected first line [%v]", line)
-			}
-			if !re.Match([]byte(tokens[5])) {
-				skip = true
-			}
 		case strings.HasPrefix(line, cVMFlagsPrefix):
-			first = true
-			skip = false
-			continue
-		case skip:
-			continue
+			return info, nil
 		case strings.HasPrefix(line, cSizePrefix):
-			flag = true
-			info.Count++
-			vp = &info.Total
+			vp = &info.Size
 		case strings.HasPrefix(line, cRssPrefix):
-			flag = true
 			vp = &info.RSS
 		case strings.HasPrefix(line, cPssPrefix):
-			flag = true
 			vp = &info.PSS
+		default:
+			continue
 		}
 
-		if flag {
-			val, err := parseMemory(line)
-			if err != nil {
-				log.Fatal(err)
-			}
-			*vp += val
+		val, err := parseMemory(line)
+		if err != nil {
+			return nil, err
 		}
+		*vp += val
 	}
 
-	fmt.Printf("%+v\n", info)
+	return nil, fmt.Errorf("unexpected data in smaps file")
 }
 
 func parseMemory(line string) (uint64, error) {
@@ -111,29 +142,44 @@ func parseMemory(line string) (uint64, error) {
 		return 0, fmt.Errorf("expected 3 tokens in line [%v]", line)
 	}
 
-	num, err := strconv.ParseUint(tokens[1], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("unable to parse value [%v] as uint64", tokens[1])
-	}
-
-	mul, err := findMultiplier(tokens[2])
-	if err != nil {
-		return 0, err
-	}
-
-	return num * mul, nil
+	return toUintMemory(tokens[1], tokens[2])
 }
 
-func findMultiplier(s string) (uint64, error) {
-	s = strings.ToLower(s)
-	switch s {
+func toUintMemory(val, str string) (uint64, error) {
+	num, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("unable to parse value [%v] as uint64", val)
+	}
+
+	str = strings.ToLower(str)
+	switch str {
 	case "kb":
-		return 1024, nil
+		return num * 1024, nil
 	case "mb":
-		return 1024 * 1024, nil
+		return num * 1024 * 1024, nil
 	case "gb":
-		return 1024 * 1024 * 1024, nil
+		return num * 1024 * 1024 * 1024, nil
 	default:
-		return 0, fmt.Errorf("unable to parse value [%v]", s)
+		return 0, fmt.Errorf("unable to parse value [%v]", str)
+	}
+}
+
+func printSmapsInfo(sf *SmapsInfo) {
+	fmt.Printf("Total mappings: %v\n", sf.Count)
+	fmt.Printf("Total size: %v\n", toStringMemory(sf.Total))
+	fmt.Printf("Total RSS: %v\n", toStringMemory(sf.RSS))
+	fmt.Printf("Total PSS: %v\n", toStringMemory(sf.PSS))
+}
+
+func toStringMemory(m uint64) string {
+	switch {
+	case m > 1024*1024*1024:
+		return strconv.Itoa(int(m)/1024/1024/1024) + " GB"
+	case m > 1024*1024:
+		return strconv.Itoa(int(m/1024/1024)) + " MB"
+	case m > 1024:
+		return strconv.Itoa(int(m/1024)) + " KB"
+	default:
+		return strconv.Itoa(int(m)) + " Bytes"
 	}
 }
