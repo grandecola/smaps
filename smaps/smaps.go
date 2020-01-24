@@ -1,15 +1,11 @@
-package main
+package smaps
 
 import (
 	"bufio"
 	"bytes"
-	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
-	"os"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -21,40 +17,26 @@ const (
 	cVMFlagsPrefix = "VmFlags:"
 )
 
-// SmapsInfo stores various aggregate information computed from /proc/<pid>/smaps file.
-type SmapsInfo struct {
+// ProcInfo stores various aggregate information computed
+// from /proc/<pid>/smaps file for a process.
+type ProcInfo struct {
 	Count uint64
 	RSS   uint64
 	PSS   uint64
 	Total uint64
-	maps  []*MapsInfo
+	Maps  []*MapInfo
 }
 
-// MapsInfo stores information about one mapping.
-type MapsInfo struct {
+// MapInfo stores information about one mapping.
+type MapInfo struct {
 	Name string
 	RSS  uint64
 	PSS  uint64
 	Size uint64
 }
 
-func main() {
-	pid := os.Getpid()
-	pidVar := flag.Int("pid", pid, "process pid to compute mem usage for")
-	filter := flag.String("filter", "", "filter mapped files using regular expression")
-	flag.Parse()
-
-	filePath := fmt.Sprintf("/proc/%v/smaps", *pidVar)
-	sf, err := readSmaps(filePath, *filter)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	printSmapsInfo(sf)
-	printTop10Maps(sf)
-}
-
-func readSmaps(fp string, filter string) (*SmapsInfo, error) {
+// ReadSmaps reads the /proc/<pid>/smaps file and stores the information in a struct.
+func ReadSmaps(pid int, filter string) (*ProcInfo, error) {
 	var re *regexp.Regexp
 	if filter != "" {
 		var err error
@@ -64,12 +46,13 @@ func readSmaps(fp string, filter string) (*SmapsInfo, error) {
 		}
 	}
 
+	fp := fmt.Sprintf("/proc/%v/smaps", pid)
 	data, err := ioutil.ReadFile(fp)
 	if err != nil {
 		return nil, fmt.Errorf("error in reading file: %v :: %w", fp, err)
 	}
 
-	sf := new(SmapsInfo)
+	sf := new(ProcInfo)
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -90,7 +73,7 @@ func readSmaps(fp string, filter string) (*SmapsInfo, error) {
 			if err != nil {
 				return nil, err
 			}
-			sf.maps = append(sf.maps, mf)
+			sf.Maps = append(sf.Maps, mf)
 			sf.Count++
 			sf.RSS += mf.RSS
 			sf.PSS += mf.PSS
@@ -112,8 +95,8 @@ func skipMapping(scanner *bufio.Scanner) error {
 	return fmt.Errorf("unexpected data in smaps file")
 }
 
-func readMapping(scanner *bufio.Scanner) (*MapsInfo, error) {
-	info := new(MapsInfo)
+func readMapping(scanner *bufio.Scanner) (*MapInfo, error) {
+	info := new(MapInfo)
 
 	line := scanner.Text()
 	tokens := strings.Fields(line)
@@ -175,44 +158,4 @@ func toUintMemory(val, str string) (uint64, error) {
 	default:
 		return 0, fmt.Errorf("unable to parse value [%v]", str)
 	}
-}
-
-func printSmapsInfo(sf *SmapsInfo) {
-	fmt.Println("Summary:")
-	fmt.Printf("  Total mappings: %v\n", sf.Count)
-	fmt.Printf("  Total size: %v\n", toStringMemory(sf.Total))
-	fmt.Printf("  Total RSS: %v\n", toStringMemory(sf.RSS))
-	fmt.Printf("  Total PSS: %v\n", toStringMemory(sf.PSS))
-}
-
-func printTop10Maps(sf *SmapsInfo) {
-	fmt.Println("Top 10 mappings:")
-	sort.Slice(sf.maps, func(i, j int) bool {
-		return sf.maps[i].PSS > sf.maps[j].PSS
-	})
-	for i, mf := range sf.maps[:min(10, len(sf.maps))] {
-		fmt.Printf("  %v. {%v} PSS: %v, RSS: %v, Size: %v\n", i+1, mf.Name, toStringMemory(mf.PSS),
-			toStringMemory(mf.RSS), toStringMemory(mf.Size))
-	}
-}
-
-func toStringMemory(m uint64) string {
-	switch {
-	case m > 1024*1024*1024:
-		return strconv.Itoa(int(m)/1024/1024/1024) + " GB"
-	case m > 1024*1024:
-		return strconv.Itoa(int(m/1024/1024)) + " MB"
-	case m > 1024:
-		return strconv.Itoa(int(m/1024)) + " KB"
-	default:
-		return strconv.Itoa(int(m)) + " Bytes"
-	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-
-	return b
 }

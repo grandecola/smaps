@@ -1,5 +1,5 @@
 ## smaps
-Script to compute memory usage of a process due to mmap (using `/proc/<pid>/smaps`)
+Script and a library to compute memory usage of a process due to mmap (using `/proc/<pid>/smaps`)
 
 ## How to Use
-`go run smaps.go --help`
+`go run main.go --help`
