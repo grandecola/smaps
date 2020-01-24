@@ -59,8 +59,8 @@ func ReadSmaps(pid int, filter string) (*ProcInfo, error) {
 		tokens := strings.Fields(line)
 
 		switch {
-		case re != nil && len(tokens) == 5:
-		case re != nil && len(tokens) == 6 && !re.Match([]byte(tokens[5])):
+		case re != nil && len(tokens) == 5,
+			re != nil && len(tokens) == 6 && !re.Match([]byte(tokens[5])):
 			if err := skipMapping(scanner); err != nil {
 				return nil, err
 			}
