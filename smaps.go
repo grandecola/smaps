@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -26,10 +27,12 @@ type SmapsInfo struct {
 	RSS   uint64
 	PSS   uint64
 	Total uint64
+	maps  []*MapsInfo
 }
 
 // MapsInfo stores information about one mapping.
 type MapsInfo struct {
+	Name string
 	RSS  uint64
 	PSS  uint64
 	Size uint64
@@ -48,6 +51,7 @@ func main() {
 	}
 
 	printSmapsInfo(sf)
+	printTop10Maps(sf)
 }
 
 func readSmaps(fp string, filter string) (*SmapsInfo, error) {
@@ -86,6 +90,7 @@ func readSmaps(fp string, filter string) (*SmapsInfo, error) {
 			if err != nil {
 				return nil, err
 			}
+			sf.maps = append(sf.maps, mf)
 			sf.Count++
 			sf.RSS += mf.RSS
 			sf.PSS += mf.PSS
@@ -109,6 +114,14 @@ func skipMapping(scanner *bufio.Scanner) error {
 
 func readMapping(scanner *bufio.Scanner) (*MapsInfo, error) {
 	info := new(MapsInfo)
+
+	line := scanner.Text()
+	tokens := strings.Fields(line)
+	if len(tokens) != 6 {
+		info.Name = "anonymous"
+	} else {
+		info.Name = tokens[5]
+	}
 
 	var vp *uint64
 	for scanner.Scan() {
@@ -165,10 +178,22 @@ func toUintMemory(val, str string) (uint64, error) {
 }
 
 func printSmapsInfo(sf *SmapsInfo) {
-	fmt.Printf("Total mappings: %v\n", sf.Count)
-	fmt.Printf("Total size: %v\n", toStringMemory(sf.Total))
-	fmt.Printf("Total RSS: %v\n", toStringMemory(sf.RSS))
-	fmt.Printf("Total PSS: %v\n", toStringMemory(sf.PSS))
+	fmt.Println("Summary:")
+	fmt.Printf("  Total mappings: %v\n", sf.Count)
+	fmt.Printf("  Total size: %v\n", toStringMemory(sf.Total))
+	fmt.Printf("  Total RSS: %v\n", toStringMemory(sf.RSS))
+	fmt.Printf("  Total PSS: %v\n", toStringMemory(sf.PSS))
+}
+
+func printTop10Maps(sf *SmapsInfo) {
+	fmt.Println("Top 10 mappings:")
+	sort.Slice(sf.maps, func(i, j int) bool {
+		return sf.maps[i].PSS > sf.maps[j].PSS
+	})
+	for i, mf := range sf.maps[:min(10, len(sf.maps))] {
+		fmt.Printf("  %v. {%v} PSS: %v, RSS: %v, Size: %v\n", i+1, mf.Name, toStringMemory(mf.PSS),
+			toStringMemory(mf.RSS), toStringMemory(mf.Size))
+	}
 }
 
 func toStringMemory(m uint64) string {
@@ -182,4 +207,12 @@ func toStringMemory(m uint64) string {
 	default:
 		return strconv.Itoa(int(m)) + " Bytes"
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+
+	return b
 }
