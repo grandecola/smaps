@@ -12,11 +12,13 @@ import (
 )
 
 func main() {
-	pid := os.Getpid()
-	pidVar := flag.Int("pid", pid, "process pid to compute mem usage for")
+	pidVar := flag.Int("pid", 0, "process pid to compute mem usage for (default this pid)")
 	filterVar := flag.String("filter", "", "filter mapped files using regular expression")
 	flag.Parse()
 
+	if *pidVar == 0 {
+		*pidVar = os.Getpid()
+	}
 	sf, err := smaps.ReadSmaps(*pidVar, *filterVar)
 	if err != nil {
 		log.Fatal(err)
