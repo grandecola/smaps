@@ -1,6 +1,4 @@
-[![Build Status](https://travis-ci.com/grandecola/smaps.svg?branch=master)](https://travis-ci.com/grandecola/smaps) [![PkgGoDev](https://pkg.go.dev/badge/github.com/grandecola/smaps/smaps)](https://pkg.go.dev/github.com/grandecola/smaps/smaps) [![MIT license](http://img.shields.io/badge/license-MIT-brightgreen.svg)](http://opensource.org/licenses/MIT) [![Go Report Card](https://goreportcard.com/badge/github.com/grandecola/smaps)](https://goreportcard.com/report/github.com/grandecola/smaps) [![golangci](https://golangci.com/badges/github.com/grandecola/smaps.svg)](https://golangci.com/r/github.com/grandecola/smaps)
-
-## smaps
+# smaps [![PkgGoDev](https://pkg.go.dev/badge/github.com/grandecola/smaps/smaps)](https://pkg.go.dev/github.com/grandecola/smaps/smaps)
 
 Script and a library to compute memory usage of a process due to mmap (using `/proc/<pid>/smaps`)
 
@@ -8,7 +6,7 @@ Script and a library to compute memory usage of a process due to mmap (using `/p
 
 `go run main.go --help`
 
-```
+```bash
 Usage:
   -filter string
         filter mapped files using regular expression
@@ -20,7 +18,7 @@ Usage:
 
 ### Print memory usage of current process
 
-```
+```bash
 ⇒  go run main.go
 Summary:
   Total mappings: 30
@@ -42,7 +40,7 @@ Top 10 mappings:
 
 ### Filter mappings using regex
 
-```
+```bash
 ⇒  go run main.go -filter "main"
 Summary:
   Total mappings: 3
@@ -59,7 +57,7 @@ Top 10 mappings:
 
 This needs privileged permissions (sudo)
 
-```
+```bash
 ⇒  sudo go run main.go -pid 1
 Summary:
   Total mappings: 212
@@ -96,4 +94,4 @@ fmt.Printf("Total RSS due to mmap: %v bytes\n", sf.RSS)
 fmt.Printf("Total PSS due to mmap: %v bytes\n", sf.PSS)
 ```
 
-Checkout an example [here](https://github.com/grandecola/smaps/blob/master/main.go).
+Checkout an [example](https://github.com/grandecola/smaps/blob/master/main.go).

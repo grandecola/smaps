@@ -59,11 +59,3 @@ func toStringMemory(m uint64) string {
 		return strconv.Itoa(int(m)) + " Bytes"
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-
-	return b
-}

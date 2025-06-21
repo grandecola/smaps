@@ -3,8 +3,9 @@ package smaps
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ func ReadSmaps(pid int, filter string) (*ProcInfo, error) {
 	}
 
 	fp := fmt.Sprintf("/proc/%v/smaps", pid)
-	data, err := ioutil.ReadFile(fp)
+	data, err := os.ReadFile(fp)
 	if err != nil {
 		return nil, fmt.Errorf("error in reading file: %v :: %w", fp, err)
 	}
@@ -60,7 +61,7 @@ func ReadSmaps(pid int, filter string) (*ProcInfo, error) {
 
 		switch {
 		case re != nil && len(tokens) == 5,
-			re != nil && len(tokens) == 6 && !re.Match([]byte(tokens[5])):
+			re != nil && len(tokens) == 6 && !re.MatchString(tokens[5]):
 			if err := skipMapping(scanner); err != nil {
 				return nil, err
 			}
@@ -92,7 +93,7 @@ func skipMapping(scanner *bufio.Scanner) error {
 		}
 	}
 
-	return fmt.Errorf("unexpected data in smaps file")
+	return errors.New("unexpected data in smaps file")
 }
 
 func readMapping(scanner *bufio.Scanner) (*MapInfo, error) {
@@ -129,7 +130,7 @@ func readMapping(scanner *bufio.Scanner) (*MapInfo, error) {
 		*vp += val
 	}
 
-	return nil, fmt.Errorf("unexpected data in smaps file")
+	return nil, errors.New("unexpected data in smaps file")
 }
 
 func parseMemory(line string) (uint64, error) {

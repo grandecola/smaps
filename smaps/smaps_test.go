@@ -2,6 +2,7 @@ package smaps
 
 import (
 	"os"
+	"path"
 	"strings"
 	"syscall"
 	"testing"
@@ -11,16 +12,12 @@ import (
 
 var (
 	protPage = syscall.PROT_READ | syscall.PROT_WRITE
-	testPath = "/tmp/m.txt"
 	size     = 16 * 1024
 )
 
 func TestReadMaps(t *testing.T) {
-	defer func() {
-		if err := os.Remove(testPath); err != nil {
-			t.Fatalf("error in deleting file :: %v", err)
-		}
-	}()
+	t.Parallel()
+	testPath := path.Join(t.TempDir(), "m.txt")
 
 	fd, err := os.OpenFile(testPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
